@@ -1,0 +1,6 @@
+domain,type,vps,remark
+example.com,php,vps1,普通 PHP 站
+demo.com,static,vps1,静态站
+mtest.com,php-device,vps2,PC/移动端分离站
+wpdemo.com,wordpress,vps2,WordPress 站
+gateway.com,lua-gateway,vps3,Lua 网关测试站

@@ -1,0 +1,8 @@
+ADMIN_IP=""
+SSH_PORT="22"
+WEB_ROOT="/www/wwwroot"
+BACKUP_ROOT="/backup"
+OPENRESTY_CONF="/usr/local/openresty/nginx/conf"
+OPENRESTY_LUA="/usr/local/openresty/nginx/lua"
+PHP_FPM_SOCK="/run/php/php8.3-fpm.sock"
+DEFAULT_EMAIL="admin@example.com"
