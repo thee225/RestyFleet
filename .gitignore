@@ -4,3 +4,10 @@ config
 *.tmp
 *.bak
 *.bak.*
+*.pem
+*.key
+*.crt
+ssl/
+backup/
+backups/
+*.tar.gz

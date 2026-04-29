@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -E
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${SCRIPT_DIR}/config"
+ROLLBACK_SITE_CONFIG=0
+ROLLBACK_SITE_CONF=""
+ROLLBACK_ENABLED_LINK=""
+ROLLBACK_TMPDIR=""
+ROLLBACK_SITE_CONF_EXISTED=0
+ROLLBACK_ENABLED_EXISTED=0
+CREATED_SITE_PATHS=()
 
 die() {
     echo "ERROR: $*" >&2
@@ -47,6 +55,7 @@ EOF
     : "${OPENRESTY_CONF:=/usr/local/openresty/nginx/conf}"
     : "${OPENRESTY_LUA:=/usr/local/openresty/nginx/lua}"
     : "${PHP_FPM_SOCK:=/run/php/php8.3-fpm.sock}"
+    : "${CHOWN_SITE_ROOT:=0}"
 }
 
 usage() {
@@ -131,6 +140,38 @@ render_template() {
         "${template}" > "${output}"
 }
 
+remember_created_path() {
+    CREATED_SITE_PATHS+=("$1")
+}
+
+ensure_directory() {
+    local dir="$1"
+    if [[ ! -d "${dir}" ]]; then
+        mkdir -p "${dir}"
+        remember_created_path "${dir}"
+    else
+        mkdir -p "${dir}"
+    fi
+}
+
+chown_created_site_paths() {
+    local site_root="$1"
+    local path
+
+    id www-data >/dev/null 2>&1 || return 0
+
+    if [[ "${CHOWN_SITE_ROOT}" == "1" ]]; then
+        warn "CHOWN_SITE_ROOT=1; recursively changing ownership of ${site_root}."
+        chown -R www-data:www-data "${site_root}"
+        return
+    fi
+
+    for path in "${CREATED_SITE_PATHS[@]:-}"; do
+        [[ -e "${path}" || -L "${path}" ]] || continue
+        chown www-data:www-data "${path}"
+    done
+}
+
 create_placeholder_cert() {
     local domain="$1"
     local ssl_dir="${OPENRESTY_CONF}/ssl/${domain}"
@@ -161,7 +202,7 @@ create_site_content() {
     local site_type="$2"
     local site_root="${WEB_ROOT}/${domain}"
 
-    mkdir -p "${site_root}"
+    ensure_directory "${site_root}"
 
     case "${site_type}" in
         static)
@@ -180,6 +221,7 @@ create_site_content() {
 </body>
 </html>
 EOF
+                remember_created_path "${site_root}/index.html"
             fi
             ;;
         php)
@@ -190,13 +232,15 @@ header('Content-Type: text/plain; charset=utf-8');
 echo "PHP site is ready.\n";
 echo "Time: " . date('c') . "\n";
 EOF
+                remember_created_path "${site_root}/index.php"
             fi
             ;;
         wordpress)
             info "WordPress type selected; directory and OpenResty config will be created, WordPress will not be downloaded."
             ;;
         static-device)
-            mkdir -p "${site_root}/pc" "${site_root}/mobile"
+            ensure_directory "${site_root}/pc"
+            ensure_directory "${site_root}/mobile"
             if [[ ! -f "${site_root}/pc/index.html" ]]; then
                 cat > "${site_root}/pc/index.html" <<EOF
 <!doctype html>
@@ -205,6 +249,7 @@ EOF
 <body><h1>${domain} PC</h1><p>PC static site is ready.</p></body>
 </html>
 EOF
+                remember_created_path "${site_root}/pc/index.html"
             fi
             if [[ ! -f "${site_root}/mobile/index.html" ]]; then
                 cat > "${site_root}/mobile/index.html" <<EOF
@@ -214,16 +259,19 @@ EOF
 <body><h1>${domain} Mobile</h1><p>Mobile static site is ready.</p></body>
 </html>
 EOF
+                remember_created_path "${site_root}/mobile/index.html"
             fi
             ;;
         php-device)
-            mkdir -p "${site_root}/pc" "${site_root}/mobile"
+            ensure_directory "${site_root}/pc"
+            ensure_directory "${site_root}/mobile"
             if [[ ! -f "${site_root}/pc/index.php" ]]; then
                 cat > "${site_root}/pc/index.php" <<'EOF'
 <?php
 header('Content-Type: text/plain; charset=utf-8');
 echo "PC PHP site is ready.\n";
 EOF
+                remember_created_path "${site_root}/pc/index.php"
             fi
             if [[ ! -f "${site_root}/mobile/index.php" ]]; then
                 cat > "${site_root}/mobile/index.php" <<'EOF'
@@ -231,6 +279,7 @@ EOF
 header('Content-Type: text/plain; charset=utf-8');
 echo "Mobile PHP site is ready.\n";
 EOF
+                remember_created_path "${site_root}/mobile/index.php"
             fi
             ;;
         lua-gateway)
@@ -240,13 +289,12 @@ EOF
 header('Content-Type: text/plain; charset=utf-8');
 echo "Lua gateway PHP route is ready.\n";
 EOF
+                remember_created_path "${site_root}/index.php"
             fi
             ;;
     esac
 
-    if id www-data >/dev/null 2>&1; then
-        chown -R www-data:www-data "${site_root}"
-    fi
+    chown_created_site_paths "${site_root}"
 }
 
 template_for_type() {
@@ -258,6 +306,64 @@ template_for_type() {
         php-device) echo "${SCRIPT_DIR}/templates/openresty-php-device.conf.tpl" ;;
         lua-gateway) echo "${SCRIPT_DIR}/templates/openresty-lua-gateway.conf.tpl" ;;
     esac
+}
+
+rollback_site_config() {
+    local status="$?"
+    set +e
+
+    if [[ "${ROLLBACK_SITE_CONFIG}" == "1" ]]; then
+        warn "OpenResty validation or reload failed; rolling back site config."
+
+        if [[ -n "${ROLLBACK_SITE_CONF}" ]]; then
+            if [[ "${ROLLBACK_SITE_CONF_EXISTED}" == "1" ]]; then
+                cp -a "${ROLLBACK_TMPDIR}/site.conf" "${ROLLBACK_SITE_CONF}"
+            else
+                rm -f "${ROLLBACK_SITE_CONF}"
+            fi
+        fi
+
+        if [[ -n "${ROLLBACK_ENABLED_LINK}" ]]; then
+            rm -f "${ROLLBACK_ENABLED_LINK}"
+            if [[ "${ROLLBACK_ENABLED_EXISTED}" == "1" ]]; then
+                cp -a "${ROLLBACK_TMPDIR}/enabled.conf" "${ROLLBACK_ENABLED_LINK}"
+            fi
+        fi
+    fi
+
+    [[ -n "${ROLLBACK_TMPDIR}" ]] && rm -rf "${ROLLBACK_TMPDIR}"
+    exit "${status}"
+}
+
+prepare_site_config_rollback() {
+    local site_conf="$1"
+    local enabled_link="$2"
+
+    ROLLBACK_TMPDIR="$(mktemp -d)"
+    ROLLBACK_SITE_CONF="${site_conf}"
+    ROLLBACK_ENABLED_LINK="${enabled_link}"
+    ROLLBACK_SITE_CONF_EXISTED=0
+    ROLLBACK_ENABLED_EXISTED=0
+
+    if [[ -e "${site_conf}" || -L "${site_conf}" ]]; then
+        cp -a "${site_conf}" "${ROLLBACK_TMPDIR}/site.conf"
+        ROLLBACK_SITE_CONF_EXISTED=1
+    fi
+
+    if [[ -e "${enabled_link}" || -L "${enabled_link}" ]]; then
+        cp -a "${enabled_link}" "${ROLLBACK_TMPDIR}/enabled.conf"
+        ROLLBACK_ENABLED_EXISTED=1
+    fi
+
+    ROLLBACK_SITE_CONFIG=1
+    trap rollback_site_config ERR
+}
+
+commit_site_config() {
+    ROLLBACK_SITE_CONFIG=0
+    trap - ERR
+    [[ -n "${ROLLBACK_TMPDIR}" ]] && rm -rf "${ROLLBACK_TMPDIR}"
+    ROLLBACK_TMPDIR=""
 }
 
 install_site_config() {
@@ -273,12 +379,13 @@ install_site_config() {
     enabled_link="${OPENRESTY_CONF}/sites-enabled/${domain}.conf"
     tmp_conf="$(mktemp)"
 
-    if [[ -e "${site_conf}" ]]; then
+    if [[ -e "${site_conf}" || -L "${site_conf}" ]]; then
         warn "Site config already exists: ${site_conf}"
         confirm "Overwrite it?" || die "Aborted; existing site config was not changed."
         backup_file "${site_conf}"
     fi
 
+    prepare_site_config_rollback "${site_conf}" "${enabled_link}"
     render_template "${template}" "${tmp_conf}" "${domain}"
     install -m 0644 "${tmp_conf}" "${site_conf}"
     rm -f "${tmp_conf}"
@@ -286,7 +393,10 @@ install_site_config() {
 }
 
 reload_openresty() {
-    command -v openresty >/dev/null 2>&1 || die "openresty command not found."
+    if ! command -v openresty >/dev/null 2>&1; then
+        echo "ERROR: openresty command not found." >&2
+        return 1
+    fi
     openresty -t
     systemctl reload openresty
 }
@@ -316,6 +426,7 @@ main() {
     create_placeholder_cert "${domain}"
     install_site_config "${domain}" "${site_type}"
     reload_openresty
+    commit_site_config
 
     cat <<EOF
 

@@ -51,6 +51,8 @@ EOF
     : "${OPENRESTY_LUA:=/usr/local/openresty/nginx/lua}"
     : "${PHP_FPM_SOCK:=/run/php/php8.3-fpm.sock}"
     : "${DEFAULT_EMAIL:=admin@example.com}"
+    : "${SKIP_APT_UPGRADE:=0}"
+    : "${UFW_CONFIRM_ENABLE:=1}"
 }
 
 backup_file() {
@@ -108,9 +110,15 @@ check_ports_free() {
 }
 
 install_base_packages() {
-    info "Updating apt package indexes and upgrading installed packages..."
+    info "Updating apt package indexes..."
     apt update
-    DEBIAN_FRONTEND=noninteractive apt upgrade -y
+
+    if [[ "${SKIP_APT_UPGRADE}" == "1" ]]; then
+        warn "SKIP_APT_UPGRADE=1; skipping apt upgrade."
+    else
+        info "Upgrading installed packages..."
+        DEBIAN_FRONTEND=noninteractive apt upgrade -y
+    fi
 
     info "Installing base tools..."
     DEBIAN_FRONTEND=noninteractive apt install -y \
@@ -257,8 +265,19 @@ ensure_openresty_worker_user() {
     rm -f "${tmp_file}"
 }
 
+managed_ufw_rule_numbers() {
+    local pattern="$1"
+    ufw status numbered | awk -v pattern="${pattern}" '
+        $0 ~ pattern && match($0, /^\[[[:space:]]*[0-9]+\]/) {
+            rule = substr($0, RSTART, RLENGTH)
+            gsub(/[^0-9]/, "", rule)
+            print rule
+        }
+    ' | sort -rn
+}
+
 clear_managed_cf_ufw_rules() {
-    mapfile -t rule_numbers < <(ufw status numbered | awk '/(restyfleet|openresty-manager)-cloudflare/ { gsub(/\[|\]/, "", $1); print $1 }' | sort -rn)
+    mapfile -t rule_numbers < <(managed_ufw_rule_numbers '(restyfleet|openresty-manager)-cloudflare')
     local rule
     for rule in "${rule_numbers[@]:-}"; do
         [[ -n "${rule}" ]] && ufw --force delete "${rule}" >/dev/null
@@ -266,11 +285,48 @@ clear_managed_cf_ufw_rules() {
 }
 
 clear_managed_ssh_ufw_rules() {
-    mapfile -t rule_numbers < <(ufw status numbered | awk '/(restyfleet|openresty-manager)-ssh/ { gsub(/\[|\]/, "", $1); print $1 }' | sort -rn)
+    mapfile -t rule_numbers < <(managed_ufw_rule_numbers '(restyfleet|openresty-manager)-ssh')
     local rule
     for rule in "${rule_numbers[@]:-}"; do
         [[ -n "${rule}" ]] && ufw --force delete "${rule}" >/dev/null
     done
+}
+
+current_ssh_source_ip() {
+    if [[ -n "${SSH_CLIENT:-}" ]]; then
+        awk '{ print $1 }' <<<"${SSH_CLIENT}"
+    elif [[ -n "${SSH_CONNECTION:-}" ]]; then
+        awk '{ print $1 }' <<<"${SSH_CONNECTION}"
+    else
+        echo ""
+    fi
+}
+
+confirm_ufw_enable() {
+    local ssh_source admin_host answer
+    ssh_source="$(current_ssh_source_ip)"
+    admin_host="${ADMIN_IP%/*}"
+
+    echo
+    warn "UFW is about to be enabled."
+    warn "SSH allow rule: ADMIN_IP=${ADMIN_IP}, SSH_PORT=${SSH_PORT}"
+    if [[ -n "${ssh_source}" ]]; then
+        warn "Current SSH source detected from SSH_CLIENT/SSH_CONNECTION: ${ssh_source}"
+        if [[ "${ssh_source}" != "${admin_host}" ]]; then
+            warn "Current SSH source does not exactly match ADMIN_IP host part (${admin_host})."
+            warn "If ADMIN_IP is not a CIDR range containing this source, SSH may be locked out."
+        fi
+    else
+        warn "Current SSH source could not be detected. Console or provider rescue access is recommended."
+    fi
+
+    if [[ "${UFW_CONFIRM_ENABLE}" == "0" ]]; then
+        warn "UFW_CONFIRM_ENABLE=0; enabling UFW without interactive confirmation."
+        return
+    fi
+
+    read -r -p "Type YES to enable UFW now: " answer
+    [[ "${answer}" == "YES" ]] || die "Aborted before enabling UFW."
 }
 
 configure_ufw() {
@@ -291,6 +347,7 @@ configure_ufw() {
     curl -fsSL https://www.cloudflare.com/ips-v4 -o "${tmpdir}/ips-v4"
     curl -fsSL https://www.cloudflare.com/ips-v6 -o "${tmpdir}/ips-v6"
 
+    confirm_ufw_enable
     ufw default deny incoming
     ufw default allow outgoing
     clear_managed_ssh_ufw_rules

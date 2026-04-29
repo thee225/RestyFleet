@@ -44,7 +44,9 @@ SSH_PORT="22"
 bash init-vps.sh
 ```
 
-如果 `ADMIN_IP` 为空，脚本不会自动启用 UFW，避免锁死 SSH。
+如果 `ADMIN_IP` 为空，脚本不会自动启用 UFW，避免锁死 SSH。设置了 `ADMIN_IP` 后，脚本会在启用 UFW 前显示当前 SSH 来源 IP，并要求输入 `YES` 确认；批量自动化部署时可以在确认无误后设置 `UFW_CONFIRM_ENABLE="0"`。
+
+默认会执行 `apt upgrade -y`。如果你的系统镜像已经提前更新，可以设置 `SKIP_APT_UPGRADE="1"` 跳过完整升级。
 
 ## 新增站点
 
@@ -137,6 +139,8 @@ systemctl reload openresty
 - 不安装普通 `nginx`。
 - 不要把自签名占位证书用于正式环境。
 - `ADMIN_IP` 为空时不会启用 UFW，避免锁死 SSH。
+- `UFW_CONFIRM_ENABLE="1"` 时，启用 UFW 前必须手动输入 `YES`。
+- `CHOWN_SITE_ROOT="0"` 时，`create-site.sh` 只调整脚本新建占位文件的所有权，不递归改动已有业务文件。
 - 正式环境建议使用 SSH 密钥登录，关闭密码登录可作为后续增强项。
 
 ## 配置文件
@@ -152,7 +156,16 @@ OPENRESTY_CONF="/usr/local/openresty/nginx/conf"
 OPENRESTY_LUA="/usr/local/openresty/nginx/lua"
 PHP_FPM_SOCK="/run/php/php8.3-fpm.sock"
 DEFAULT_EMAIL="admin@example.com"
+SKIP_APT_UPGRADE="0"
+UFW_CONFIRM_ENABLE="1"
+CHOWN_SITE_ROOT="0"
 ```
+
+配置项说明：
+
+- `SKIP_APT_UPGRADE="0"`：默认更新系统包；设为 `1` 时只执行 `apt update` 和必要软件安装。
+- `UFW_CONFIRM_ENABLE="1"`：默认启用 UFW 前要求输入 `YES`；设为 `0` 可用于确认过来源 IP 的自动化部署。
+- `CHOWN_SITE_ROOT="0"`：默认只 `chown` 脚本新建的占位目录/文件；设为 `1` 会递归 `chown -R` 整个站点目录。
 
 ## 目录结构
 

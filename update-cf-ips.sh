@@ -100,8 +100,19 @@ ufw_is_active() {
     ufw status | grep -q '^Status: active'
 }
 
+managed_ufw_rule_numbers() {
+    local pattern="$1"
+    ufw status numbered | awk -v pattern="${pattern}" '
+        $0 ~ pattern && match($0, /^\[[[:space:]]*[0-9]+\]/) {
+            rule = substr($0, RSTART, RLENGTH)
+            gsub(/[^0-9]/, "", rule)
+            print rule
+        }
+    ' | sort -rn
+}
+
 clear_managed_cf_ufw_rules() {
-    mapfile -t rule_numbers < <(ufw status numbered | awk '/(restyfleet|openresty-manager)-cloudflare/ { gsub(/\[|\]/, "", $1); print $1 }' | sort -rn)
+    mapfile -t rule_numbers < <(managed_ufw_rule_numbers '(restyfleet|openresty-manager)-cloudflare')
     local rule
     for rule in "${rule_numbers[@]:-}"; do
         [[ -n "${rule}" ]] && ufw --force delete "${rule}" >/dev/null
