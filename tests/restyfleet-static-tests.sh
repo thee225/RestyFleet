@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 fail() {
-    echo "FAIL: $*" >&2
+    echo "失败：$*" >&2
     exit 1
 }
 
@@ -32,51 +32,51 @@ assert_not_grep() {
 }
 
 assert_fixed_grep 'match($0, /^\[[[:space:]]*[0-9]+\]/)' init-vps.sh \
-    "init-vps.sh must parse UFW numbered output from the whole line, not awk \$1."
+    "init-vps.sh 必须从整行解析 UFW 编号，不能使用 awk \$1。"
 assert_fixed_grep 'match($0, /^\[[[:space:]]*[0-9]+\]/)' update-cf-ips.sh \
-    "update-cf-ips.sh must parse UFW numbered output from the whole line, not awk \$1."
+    "update-cf-ips.sh 必须从整行解析 UFW 编号，不能使用 awk \$1。"
 assert_not_grep 'match\(\$0, [^)]*,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*\)' init-vps.sh \
-    "init-vps.sh must avoid gawk-only match(..., array) syntax."
+    "init-vps.sh 必须避免使用 gawk 专属的 match(..., array) 语法。"
 assert_not_grep 'match\(\$0, [^)]*,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*\)' update-cf-ips.sh \
-    "update-cf-ips.sh must avoid gawk-only match(..., array) syntax."
+    "update-cf-ips.sh 必须避免使用 gawk 专属的 match(..., array) 语法。"
 
 assert_grep 'rollback_site_config' create-site.sh \
-    "create-site.sh must roll back site config when openresty -t fails."
+    "create-site.sh 必须在 openresty -t 失败时回滚站点配置。"
 assert_grep '^set -E$' create-site.sh \
-    "create-site.sh must enable ERR trap inheritance with set -E."
+    "create-site.sh 必须通过 set -E 启用 ERR trap 继承。"
 assert_grep 'trap .*rollback_site_config' create-site.sh \
-    "create-site.sh must install a rollback trap during site config activation."
+    "create-site.sh 必须在启用站点配置时安装回滚 trap。"
 
 assert_grep 'SKIP_APT_UPGRADE=' config.example \
-    "config.example must expose SKIP_APT_UPGRADE."
+    "config.example 必须提供 SKIP_APT_UPGRADE。"
 assert_grep 'CHOWN_SITE_ROOT=' config.example \
-    "config.example must expose CHOWN_SITE_ROOT."
+    "config.example 必须提供 CHOWN_SITE_ROOT。"
 assert_grep 'UFW_CONFIRM_ENABLE=' config.example \
-    "config.example must expose UFW_CONFIRM_ENABLE."
+    "config.example 必须提供 UFW_CONFIRM_ENABLE。"
 
 assert_grep 'SSH_CLIENT' init-vps.sh \
-    "init-vps.sh must show the current SSH source before enabling UFW."
+    "init-vps.sh 必须在启用 UFW 前显示当前 SSH 来源。"
 assert_grep 'UFW_CONFIRM_ENABLE' init-vps.sh \
-    "init-vps.sh must require explicit UFW enable confirmation unless configured otherwise."
+    "init-vps.sh 必须默认要求显式确认后才启用 UFW。"
 
 assert_grep '\*\.pem' .gitignore \
-    ".gitignore must ignore PEM certificate/key files."
+    ".gitignore 必须忽略 PEM 证书/密钥文件。"
 assert_grep '\*\.key' .gitignore \
-    ".gitignore must ignore key files."
+    ".gitignore 必须忽略 key 文件。"
 assert_grep '\*\.tar\.gz' .gitignore \
-    ".gitignore must ignore backup archives."
+    ".gitignore 必须忽略备份压缩包。"
 
 assert_not_grep 'listen 443 ssl http2;' templates/openresty-static.conf.tpl \
-    "static template should use http2 on; instead of deprecated listen ... http2."
+    "static 模板应使用 http2 on; 而不是已弃用的 listen ... http2。"
 assert_not_grep 'listen 443 ssl http2;' templates/openresty-php.conf.tpl \
-    "php template should use http2 on; instead of deprecated listen ... http2."
+    "php 模板应使用 http2 on; 而不是已弃用的 listen ... http2。"
 assert_not_grep 'listen 443 ssl http2;' templates/openresty-wordpress.conf.tpl \
-    "wordpress template should use http2 on; instead of deprecated listen ... http2."
+    "wordpress 模板应使用 http2 on; 而不是已弃用的 listen ... http2。"
 assert_not_grep 'listen 443 ssl http2;' templates/openresty-static-device.conf.tpl \
-    "static-device template should use http2 on; instead of deprecated listen ... http2."
+    "static-device 模板应使用 http2 on; 而不是已弃用的 listen ... http2。"
 assert_not_grep 'listen 443 ssl http2;' templates/openresty-php-device.conf.tpl \
-    "php-device template should use http2 on; instead of deprecated listen ... http2."
+    "php-device 模板应使用 http2 on; 而不是已弃用的 listen ... http2。"
 assert_not_grep 'listen 443 ssl http2;' templates/openresty-lua-gateway.conf.tpl \
-    "lua-gateway template should use http2 on; instead of deprecated listen ... http2."
+    "lua-gateway 模板应使用 http2 on; 而不是已弃用的 listen ... http2。"
 
-echo "restyfleet static tests passed."
+echo "RestyFleet 静态测试通过。"

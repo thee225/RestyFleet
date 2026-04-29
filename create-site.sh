@@ -13,35 +13,35 @@ ROLLBACK_ENABLED_EXISTED=0
 CREATED_SITE_PATHS=()
 
 die() {
-    echo "ERROR: $*" >&2
+    echo "错误：$*" >&2
     exit 1
 }
 
 info() {
-    echo "[INFO] $*"
+    echo "[信息] $*"
 }
 
 warn() {
-    echo "[WARN] $*" >&2
+    echo "[警告] $*" >&2
 }
 
 confirm() {
     local prompt="$1"
     local answer
-    read -r -p "${prompt} [y/N] " answer
+    read -r -p "${prompt} 输入 y 确认，直接回车取消：" answer
     [[ "${answer}" == "y" || "${answer}" == "Y" || "${answer}" == "yes" || "${answer}" == "YES" ]]
 }
 
 require_root() {
-    [[ "${EUID}" -eq 0 ]] || die "Please run as root: sudo bash $0"
+    [[ "${EUID}" -eq 0 ]] || die "请使用 root 执行：sudo bash $0"
 }
 
 load_config() {
     if [[ ! -f "${CONFIG_FILE}" ]]; then
         cat >&2 <<'EOF'
-Missing ./config.
+缺少 ./config 配置文件。
 
-Please run:
+请先执行：
   cp config.example config
   nano config
 EOF
@@ -60,7 +60,7 @@ EOF
 
 usage() {
     cat <<'EOF'
-Usage:
+用法：
   bash create-site.sh example.com static
   bash create-site.sh example.com php
   bash create-site.sh example.com wordpress
@@ -73,13 +73,13 @@ EOF
 validate_domain() {
     local domain="$1"
     [[ "${domain}" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]] \
-        || die "Invalid domain: ${domain}"
+        || die "域名格式无效：${domain}"
 }
 
 validate_site_type() {
     case "$1" in
         static|php|wordpress|static-device|php-device|lua-gateway) ;;
-        *) die "Invalid site type: $1" ;;
+        *) die "站点类型无效：$1" ;;
     esac
 }
 
@@ -100,7 +100,7 @@ resolve_php_fpm_sock() {
 
     local found=""
     found="$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' 2>/dev/null | sort -V | tail -n 1 || true)"
-    [[ -n "${found}" ]] || die "PHP-FPM socket not found. Set PHP_FPM_SOCK in ./config or start php8.3-fpm."
+    [[ -n "${found}" ]] || die "未找到 PHP-FPM socket。请在 ./config 设置 PHP_FPM_SOCK，或启动 php8.3-fpm。"
     PHP_FPM_SOCK="${found}"
 }
 
@@ -161,7 +161,7 @@ chown_created_site_paths() {
     id www-data >/dev/null 2>&1 || return 0
 
     if [[ "${CHOWN_SITE_ROOT}" == "1" ]]; then
-        warn "CHOWN_SITE_ROOT=1; recursively changing ownership of ${site_root}."
+        warn "CHOWN_SITE_ROOT=1，将递归修改 ${site_root} 的所有权。"
         chown -R www-data:www-data "${site_root}"
         return
     fi
@@ -182,12 +182,12 @@ create_placeholder_cert() {
     chmod 700 "${ssl_dir}"
 
     if [[ -f "${cert}" && -f "${key}" ]]; then
-        info "SSL files already exist for ${domain}; keeping existing files."
+        info "${domain} 的 SSL 文件已存在，保留现有文件。"
         return
     fi
 
-    warn "Creating self-signed placeholder certificate for ${domain}."
-    warn "Replace it with a Cloudflare Origin CA certificate before production use."
+    warn "正在为 ${domain} 创建自签名占位证书。"
+    warn "正式使用前请替换为 Cloudflare Origin CA 证书。"
     openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
         -keyout "${key}" \
         -out "${cert}" \
@@ -209,7 +209,7 @@ create_site_content() {
             if [[ ! -f "${site_root}/index.html" ]]; then
                 cat > "${site_root}/index.html" <<EOF
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -217,7 +217,7 @@ create_site_content() {
 </head>
 <body>
   <h1>${domain}</h1>
-  <p>Static site is ready.</p>
+  <p>静态站点已创建。</p>
 </body>
 </html>
 EOF
@@ -229,14 +229,14 @@ EOF
                 cat > "${site_root}/index.php" <<'EOF'
 <?php
 header('Content-Type: text/plain; charset=utf-8');
-echo "PHP site is ready.\n";
-echo "Time: " . date('c') . "\n";
+echo "PHP 站点已创建。\n";
+echo "时间：" . date('c') . "\n";
 EOF
                 remember_created_path "${site_root}/index.php"
             fi
             ;;
         wordpress)
-            info "WordPress type selected; directory and OpenResty config will be created, WordPress will not be downloaded."
+            info "已选择 WordPress 类型；只创建目录和 OpenResty 配置，不自动下载 WordPress。"
             ;;
         static-device)
             ensure_directory "${site_root}/pc"
@@ -244,9 +244,9 @@ EOF
             if [[ ! -f "${site_root}/pc/index.html" ]]; then
                 cat > "${site_root}/pc/index.html" <<EOF
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${domain} PC</title></head>
-<body><h1>${domain} PC</h1><p>PC static site is ready.</p></body>
+<body><h1>${domain} PC</h1><p>PC 静态站点已创建。</p></body>
 </html>
 EOF
                 remember_created_path "${site_root}/pc/index.html"
@@ -254,9 +254,9 @@ EOF
             if [[ ! -f "${site_root}/mobile/index.html" ]]; then
                 cat > "${site_root}/mobile/index.html" <<EOF
 <!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${domain} Mobile</title></head>
-<body><h1>${domain} Mobile</h1><p>Mobile static site is ready.</p></body>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${domain} 移动端</title></head>
+<body><h1>${domain} 移动端</h1><p>移动端静态站点已创建。</p></body>
 </html>
 EOF
                 remember_created_path "${site_root}/mobile/index.html"
@@ -269,7 +269,7 @@ EOF
                 cat > "${site_root}/pc/index.php" <<'EOF'
 <?php
 header('Content-Type: text/plain; charset=utf-8');
-echo "PC PHP site is ready.\n";
+echo "PC PHP 站点已创建。\n";
 EOF
                 remember_created_path "${site_root}/pc/index.php"
             fi
@@ -277,7 +277,7 @@ EOF
                 cat > "${site_root}/mobile/index.php" <<'EOF'
 <?php
 header('Content-Type: text/plain; charset=utf-8');
-echo "Mobile PHP site is ready.\n";
+echo "移动端 PHP 站点已创建。\n";
 EOF
                 remember_created_path "${site_root}/mobile/index.php"
             fi
@@ -287,7 +287,7 @@ EOF
                 cat > "${site_root}/index.php" <<'EOF'
 <?php
 header('Content-Type: text/plain; charset=utf-8');
-echo "Lua gateway PHP route is ready.\n";
+echo "Lua 网关 PHP 路由已创建。\n";
 EOF
                 remember_created_path "${site_root}/index.php"
             fi
@@ -313,7 +313,7 @@ rollback_site_config() {
     set +e
 
     if [[ "${ROLLBACK_SITE_CONFIG}" == "1" ]]; then
-        warn "OpenResty validation or reload failed; rolling back site config."
+        warn "OpenResty 配置检查或重载失败，正在回滚站点配置。"
 
         if [[ -n "${ROLLBACK_SITE_CONF}" ]]; then
             if [[ "${ROLLBACK_SITE_CONF_EXISTED}" == "1" ]]; then
@@ -372,7 +372,7 @@ install_site_config() {
     local template site_conf enabled_link tmp_conf
 
     template="$(template_for_type "${site_type}")"
-    [[ -f "${template}" ]] || die "Template not found: ${template}"
+    [[ -f "${template}" ]] || die "未找到模板：${template}"
 
     mkdir -p "${OPENRESTY_CONF}/sites-available" "${OPENRESTY_CONF}/sites-enabled"
     site_conf="${OPENRESTY_CONF}/sites-available/${domain}.conf"
@@ -380,8 +380,8 @@ install_site_config() {
     tmp_conf="$(mktemp)"
 
     if [[ -e "${site_conf}" || -L "${site_conf}" ]]; then
-        warn "Site config already exists: ${site_conf}"
-        confirm "Overwrite it?" || die "Aborted; existing site config was not changed."
+        warn "站点配置已存在：${site_conf}"
+        confirm "是否覆盖？" || die "已停止：现有站点配置未变更。"
         backup_file "${site_conf}"
     fi
 
@@ -394,7 +394,7 @@ install_site_config() {
 
 reload_openresty() {
     if ! command -v openresty >/dev/null 2>&1; then
-        echo "ERROR: openresty command not found." >&2
+        echo "错误：未找到 openresty 命令。" >&2
         return 1
     fi
     openresty -t
@@ -419,7 +419,7 @@ main() {
 
     if needs_php "${site_type}"; then
         resolve_php_fpm_sock
-        info "Using PHP-FPM socket: ${PHP_FPM_SOCK}"
+        info "使用 PHP-FPM socket：${PHP_FPM_SOCK}"
     fi
 
     create_site_content "${domain}" "${site_type}"
@@ -430,15 +430,15 @@ main() {
 
     cat <<EOF
 
-Site created: ${domain} (${site_type})
+站点已创建：${domain}（${site_type}）
 
-Next steps:
-  1. Add an A record in Cloudflare and enable proxy.
-  2. Set Cloudflare SSL/TLS mode to Full strict.
-  3. Replace these files with Cloudflare Origin CA certificate files:
+下一步：
+  1. 在 Cloudflare 添加 A 记录，并开启代理小云朵。
+  2. 将 Cloudflare SSL/TLS 模式设置为 Full strict。
+  3. 将以下文件替换为 Cloudflare Origin CA 证书文件：
      ${OPENRESTY_CONF}/ssl/${domain}/cert.pem
      ${OPENRESTY_CONF}/ssl/${domain}/key.pem
-  4. Test:
+  4. 测试：
      curl -I https://${domain}
 EOF
 }
