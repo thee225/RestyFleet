@@ -46,6 +46,14 @@ assert_grep '^set -E$' create-site.sh \
     "create-site.sh 必须通过 set -E 启用 ERR trap 继承。"
 assert_grep 'trap .*rollback_site_config' create-site.sh \
     "create-site.sh 必须在启用站点配置时安装回滚 trap。"
+assert_grep 'validate_zip_paths' deploy-zip.sh \
+    "deploy-zip.sh 必须检查 zip 路径，避免目录穿越。"
+assert_grep 'rsync -a --delete' deploy-zip.sh \
+    "deploy-zip.sh 必须使用 rsync --delete 同步站点目录。"
+assert_grep 'bash deploy-zip.sh' publish-zip.sh \
+    "publish-zip.sh 必须远程调用 deploy-zip.sh。"
+assert_grep 'SSHPASS' publish-zip.sh \
+    "publish-zip.sh 应支持通过环境变量 SSHPASS 配合 sshpass 使用。"
 
 assert_grep 'SKIP_APT_UPGRADE=' config.example \
     "config.example 必须提供 SKIP_APT_UPGRADE。"

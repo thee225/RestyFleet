@@ -123,6 +123,28 @@ bash update-cf-ips.sh
 bash backup-site.sh domain.com
 ```
 
+部署 zip 包到站点：
+
+```bash
+# 在 VPS 上执行
+bash deploy-zip.sh domain.com /tmp/domain.com.zip
+```
+
+从本地上传 zip 并远程部署：
+
+```bash
+# 在本地电脑执行
+bash publish-zip.sh domain.com VPS_IP /path/to/domain.com.zip
+```
+
+如果本地使用 SSH 密码登录，可以临时配合 `sshpass`：
+
+```bash
+SSHPASS="你的SSH密码" bash publish-zip.sh domain.com VPS_IP /path/to/domain.com.zip
+```
+
+正式环境更推荐使用 SSH 密钥登录，不建议把密码写进脚本或仓库。
+
 检查配置并重载：
 
 ```bash
@@ -175,6 +197,8 @@ RestyFleet/
   config.example
   init-vps.sh
   create-site.sh
+  deploy-zip.sh
+  publish-zip.sh
   update-cf-ips.sh
   backup-site.sh
   templates/
